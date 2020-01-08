@@ -1,0 +1,4 @@
+conda install pytorch
+conda install torchvision -c pytorch
+conda install pandas
+conda install -c conda-forge scikit-image
