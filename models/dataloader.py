@@ -24,7 +24,7 @@ class ImageCSVLoader(Dataset):
     def __getitem__(self, index):
         new_img = open(self.x_img_path[index])
 
-        # If needs RGB Image
+        # # If needs RGB Image
         # rgb_img = new("RGB", new_img.size)
         # rgb_img.paste(new_img)
 
@@ -39,20 +39,17 @@ class ImageCSVLoader(Dataset):
 
 class ValidationLoader:
 
-    def __init__(self, dataset_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
-        self.dataset_ath = dataset_path
-        self.dataset_path = "A:/Users/SSY/Desktop/dataset"  # Temporary
+    def __init__(self, dataset_path, label_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
         self.input_size = input_size
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.validation_data_path = self.dataset_path + '/' + 'testing'
-        self.validation_label_path = self.dataset_path + '/' + 'mnist_test.csv'
+        self.validation_data_path = dataset_path
+        self.validation_label_path = label_path
 
         # Data augmentation and normalization
         self.validation_trans = transforms.Compose([transforms.ToTensor(),
-                                                    transforms.Normalize((0.1307,), (0.3081,))
-                                                    ])
+                                                    transforms.Normalize((0.1307,), (0.3081,))])
 
         self.ValidationDataLoader = DataLoader(ImageCSVLoader(self.validation_trans,
                                                               self.validation_data_path,
@@ -65,22 +62,24 @@ class ValidationLoader:
 
 class TrainLoader:
 
-    def __init__(self, dataset_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
-        self.dataset_path = dataset_path
+    def __init__(self, dataset_path, label_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
         self.input_size = input_size
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.train_data_path = self.dataset_path + '/' + 'training'
-        self.train_label_path = self.dataset_path + '/' + 'mnist_train.csv'
+        self.train_data_path = dataset_path
+        self.train_label_path = label_path
 
-        # Data augmentation and normalization
-        self.train_trans = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5),
-                                               transforms.RandomRotation(30),
-                                               transforms.RandomCrop(input_size),
-                                               transforms.ToTensor(),
-                                               transforms.Normalize((0.1307,), (0.3081,)),
-                                               ])
+        # # Data augmentation and normalization
+        # self.train_trans = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5),
+        #                                        transforms.RandomRotation(30),
+        #                                        transforms.RandomCrop(input_size),
+        #                                        transforms.ToTensor(),
+        #                                        transforms.Normalize((0.1307,), (0.3081,)),
+        #                                        ])
+
+        self.train_trans = transforms.Compose([transforms.ToTensor(),
+                                               transforms.Normalize((0.1307,), (0.3081,))])
 
         self.TrainDataLoader = DataLoader(ImageCSVLoader(self.train_trans,
                                                          self.train_data_path,

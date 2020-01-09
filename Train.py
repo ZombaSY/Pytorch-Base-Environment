@@ -1,5 +1,4 @@
 from __future__ import print_function
-import argparse
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -7,6 +6,7 @@ from models.model import BaseNet
 from models.dataloader import TrainLoader, ValidationLoader
 import models.lr_scheduler as lr_scheduler
 import time
+import os
 
 
 def _train(parameters, model, device, train_loader, optimizer, epoch, scheduler=None):
@@ -25,13 +25,13 @@ def _train(parameters, model, device, train_loader, optimizer, epoch, scheduler=
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
-            with open('toWeb.txt', 'a') as f:
+            with open(parameters['saved_model_directory'] + '/Log.txt', 'a') as f:
                 f.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\n'.format(
                     epoch, batch_idx * len(data), len(train_loader.dataset),
                     100. * batch_idx / len(train_loader), loss.item()))
 
 
-def _validate(model, device, test_loader):
+def _validate(parameters, model, device, test_loader):
     model.eval()
     test_loss = 0
     correct = 0
@@ -49,14 +49,19 @@ def _validate(model, device, test_loader):
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
+    with open(parameters['saved_model_directory'] + '/Log.txt', 'a') as f:
+        f.write('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_loss, correct, len(test_loader.dataset),
+            100. * correct / len(test_loader.dataset)))
 
-class Train:
+
+class Trainer:
     def __init__(self, parameters):
         self.startime = time.time()
         self.parameters = parameters
 
         # Check Cuda available and assign to device
-        use_cuda = not self.parameters['use_cuda'] and torch.cuda.is_available()
+        use_cuda = self.parameters['use_cuda'] and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
 
         self.kwargs = {'num_workers': self.parameters['num_worker'],
@@ -71,12 +76,14 @@ class Train:
 
     def __init_dataloader(self, kwargs):
         # pin_memory = use CPU on dataloader during GPU is training
-        train_loader = TrainLoader(dataset_path=self.parameters['data_path'],
+        train_loader = TrainLoader(dataset_path=self.parameters['train_data_path'],
+                                   label_path=self.parameters['train_csv_path'],
                                    input_size=self.parameters['input_size'],
                                    batch_size=self.parameters['batch_size'],
                                    **kwargs)
 
-        validation_loader = ValidationLoader(dataset_path=self.parameters['data_path'],
+        validation_loader = ValidationLoader(dataset_path=self.parameters['test_data_path'],
+                                             label_path=self.parameters['test_csv_path'],
                                              input_size=self.parameters['input_size'],
                                              batch_size=self.parameters['batch_size'],
                                              **kwargs)
@@ -105,19 +112,26 @@ class Train:
     def start_train(self, model_name):
         #  increase the epochs if user has low amount of data
         prev_model_name = ''
-        for epoch in range(1, self.parameters['epoch'] + 1):
-            if epoch == 1:
-                _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
-                _validate(self.model, self.device, self.validation_loader)
-                print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
-            else:
-                prev_file_name = torch.load(prev_model_name)
-                self.model.load_state_dict(prev_file_name)
-                _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
-                _validate(self.model, self.device, self.validation_loader)
-                print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
 
-            prev_model_name = self.save_model(model_name, epoch)
+        if not os.path.exists(self.parameters['saved_model_directory']):
+            os.mkdir(self.parameters['saved_model_directory'])
+
+        with open(self.parameters['saved_model_directory'] + '/Log.txt', 'w') as f:
+            f.write('')
+    
+            for epoch in range(1, self.parameters['epoch'] + 1):
+                if epoch == 1:
+                    _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+                    _validate(self.parameters, self.model, self.device, self.validation_loader)
+                else:
+                    prev_file_name = torch.load(prev_model_name)
+                    self.model.load_state_dict(prev_file_name)
+                    _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+                    _validate(self.parameters, self.model, self.device, self.validation_loader)
+
+                print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
+                f.write("{} epoch elapsed time : {}\n".format(epoch, time.time() - self.startime))
+                prev_model_name = self.save_model(self.parameters['saved_model_directory'] + '/' + model_name, epoch)
 
     def save_model(self, model_name, epoch):
         file_name = model_name + "_" + str(epoch) + ".pt"
@@ -125,45 +139,3 @@ class Train:
         print("{} Model Saved!!\n".format(file_name))
 
         return file_name
-
-
-def main():
-    parser = argparse.ArgumentParser(description='Digo MNIST Example')
-    parser.add_argument('--input-size', type=int, default=28)
-    parser.add_argument('--output-size', type=int, default=10)
-    parser.add_argument('--batch-size', type=int, default=1024, metavar='N')
-    parser.add_argument('--num-worker', type=int, default=0, metavar='N')
-    parser.add_argument('--test-batch-size', type=int, default=1024, metavar='N')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N')
-    parser.add_argument('--lr', type=float, default=0.1, metavar='LR')
-    parser.add_argument('--momentum', type=float, default=0.5, metavar='M')
-    parser.add_argument('--use-cuda', action='store_true', default=True)
-    parser.add_argument('--seed', type=int, default=1, metavar='S')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N')
-    parser.add_argument('--pin-memory', action='store_true', default=True)
-    parser.add_argument('--model-name', type=str, default='model')
-    parser.add_argument('--data-path', type=str, default='A:/Users/SSY/Desktop/dataset')
-
-    parameters = {'input_size': 28,
-                  'output_size': 10,
-                  'batch_size': 1024,
-                  'num_worker': 6,
-                  'validation_batch_size': 1024,
-                  'epoch': 10,
-                  'learning_rate': 0.1,
-                  'momentum': 0.5,
-                  'use_cuda': True,
-                  'seed': 1,
-                  'log_interval': 10,
-                  'pin_memory': True,
-                  'model_name': 'SYModel',
-                  'data_path': 'A:/Users/SSY/Desktop/dataset'}
-
-    # 'args' is the parameter called by external execute only handling by web browser, not in code
-    trainer = Train(parameters)
-
-    trainer.start_train('sunyongV1')
-
-
-if __name__ == "__main__":
-    main()

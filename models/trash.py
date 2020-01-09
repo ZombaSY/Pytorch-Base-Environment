@@ -21,6 +21,7 @@ def crop_background(numpy_src):
 
     return numpy_src_x1, numpy_src_y1, numpy_src_x2, numpy_src_y2
 
+
 src_path = 'A:/Users/SSY/Desktop/dataset/0.jpg'
 
 src = open(src_path, 'r').convert('L')
