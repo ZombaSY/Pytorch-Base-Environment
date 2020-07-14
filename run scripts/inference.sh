@@ -1,0 +1,1 @@
+python main.py  --inference --pin_memory --worker 6 --input_size 28 --output_size 10

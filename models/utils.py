@@ -1,6 +1,9 @@
 import numpy as np
 
 
+value_scaler = 1
+
+
 def cutout(*, mask_size=24, cutout_inside=False, mask_color=(255)):
     mask_size_half = mask_size // 2
     offset = 1 if mask_size % 2 == 0 else 0

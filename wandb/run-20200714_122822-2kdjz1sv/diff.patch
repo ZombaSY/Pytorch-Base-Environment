@@ -1,0 +1,799 @@
+diff --git a/Inference.py b/Inference.py
+index 66a4a02..a8b1938 100644
+--- a/Inference.py
++++ b/Inference.py
+@@ -4,41 +4,44 @@ from PIL.ImageOps import invert
+ from models.model import BaseNet
+ from torchvision.transforms import transforms
+ import numpy as np
++from models.utils import value_scaler
+ 
+ 
+ class Inferencer:
+ 
+-    def __init__(self, parameters):
+-        self.file_name = parameters['model_path']
+-        self.src_path = parameters['data_path']
++    def __init__(self, args):
++        self.file_name = args.inference_model_path
++        self.src_path = args.data_path
+ 
+-        device('cpu')  # change device to CPU
+-        self.model = BaseNet(10)
+-        # about 1 secs to load
+-        checkpoint = load(self.file_name)
++        device('cpu')   # change device to CPU
++        self.model = BaseNet(args.output_size)
++        checkpoint = load(self.file_name)   # about 1 secs to load
+         self.model.load_state_dict(checkpoint)
+ 
+         self.trans = transforms.Compose([transforms.ToTensor(),
+-                                         transforms.Normalize((0.1307,), (0.3081,))])
+-
+-        self.input = self.convert_handmade_src(self.src_path, 28)
++                                         ])
+         self.result = ''
+ 
+-        self.input.save('sample.jpg')  #@@@@@@@@@@@@@@@@
++        # data transformation on grey scale image
++        self.input = self.__convert_handmade_src(self.src_path, args.input_size, grey_scale=args.grey_scale)
++        # self.input.save('sample.jpg')
+ 
+     def start_inference(self):
+         input_src = self.trans(self.input)  # normalize
+-        input_src = input_src.unsqueeze(0)  # fix batchsize to 1
++        input_src = input_src.unsqueeze(0)  # fix batch size to 1
+ 
+         output = self.model(input_src)
+         predict = output.detach().numpy()
+ 
++        # classification
+         self.result = str(np.argmax(predict))
+ 
++        # regression
++        self.result = predict * value_scaler  # 50 was standardized at data loader
++
+         print('Result :', self.result)
+ 
+-    @staticmethod
+-    def convert_handmade_src(src_path, output_size):
++    def __convert_handmade_src(self, src_path, output_size, grey_scale):
+ 
+         def crop_background(numpy_src):
+ 
+@@ -58,15 +61,19 @@ class Inferencer:
+ 
+             return numpy_src_x1, numpy_src_y1, numpy_src_x2, numpy_src_y2
+ 
+-        src_image = Image.open(src_path, 'r').convert('L')
+-        src_image = invert(src_image)     # Cause MNIST data is inverted
++        if grey_scale:
++            src_image = Image.open(src_path, 'r').convert('L')
++            # src_image = invert(src_image)     # invert color
++
++            numpy_image = np.asarray(src_image.getdata(), dtype=np.float64).reshape((src_image.size[1], src_image.size[0]))
++            numpy_image = np.asarray(numpy_image, dtype=np.uint8)  # if values still in range 0-255
+ 
+-        numpy_image = np.asarray(src_image.getdata(), dtype=np.float64).reshape((src_image.size[1], src_image.size[0]))
+-        numpy_image = np.asarray(numpy_image, dtype=np.uint8)  # if values still in range 0-255
++            pil_image = Image.fromarray(numpy_image, mode='L')
++            x1, y1, x2, y2 = crop_background(numpy_image)
++            pil_image = pil_image.crop((x1, y1, x2, y2))
++            pil_image = pil_image.resize([output_size, output_size])
+ 
+-        pil_image = Image.fromarray(numpy_image, mode='L')
+-        x1, y1, x2, y2 = crop_background(numpy_image)
+-        pil_image = pil_image.crop((x1, y1, x2, y2))
+-        pil_image = pil_image.resize([output_size, output_size])
++        else:
++            pil_image = Image.open(src_path, 'r')
+ 
+         return pil_image
+diff --git a/Train.py b/Train.py
+index 6e3778a..a1cc786 100644
+--- a/Train.py
++++ b/Train.py
+@@ -7,102 +7,121 @@ from models.dataloader import TrainLoader, ValidationLoader
+ import models.lr_scheduler as lr_scheduler
+ import time
+ import os
++import wandb
+ 
+ 
+-def _train(parameters, model, device, train_loader, optimizer, epoch, scheduler=None):
+-    model.train()
+-    for batch_idx, (data, target) in enumerate(train_loader):
+-        data, target = data.to(device), target.to(device)
+-        optimizer.zero_grad()
+-        output = model(data)
+-        # using both 'logsoftmax' and 'nllloss' results in the same effect of one hot labeled set
+-        loss = F.nll_loss(output, target)
+-        loss.backward()
+-        optimizer.step()
+-        if scheduler is not None:
+-            scheduler.step()
+-        if batch_idx % parameters['log_interval'] == 0:
+-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+-                epoch, batch_idx * len(data), len(train_loader.dataset),
+-                       100. * batch_idx / len(train_loader), loss.item()))
+-            with open(parameters['saved_model_directory'] + '/Log.txt', 'a') as f:
+-                f.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\n'.format(
+-                    epoch, batch_idx * len(data), len(train_loader.dataset),
+-                    100. * batch_idx / len(train_loader), loss.item()))
+-
+-
+-def _validate(parameters, model, device, test_loader):
+-    model.eval()
+-    test_loss = 0
+-    correct = 0
+-    with torch.no_grad():
+-        for data, target in test_loader:
+-            data, target = data.to(device), target.to(device)
+-            output = model(data)
+-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+-            correct += pred.eq(target.view_as(pred)).sum().item()
+-
+-    test_loss /= len(test_loader.dataset)
+-
+-    print('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+-        test_loss, correct, len(test_loader.dataset),
+-        100. * correct / len(test_loader.dataset)))
+-
+-    with open(parameters['saved_model_directory'] + '/Log.txt', 'a') as f:
+-        f.write('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+-            test_loss, correct, len(test_loader.dataset),
+-            100. * correct / len(test_loader.dataset)))
+-
+-
+-class Trainer:
+-    def __init__(self, parameters):
++class Classifier:
++    def __init__(self, args):
+         self.startime = time.time()
+-        self.parameters = parameters
++        self.args = args
+ 
+         # Check Cuda available and assign to device
+-        use_cuda = self.parameters['use_cuda'] and torch.cuda.is_available()
++        use_cuda = self.args.cuda and torch.cuda.is_available()
+         self.device = torch.device("cuda" if use_cuda else "cpu")
+ 
+-        self.kwargs = {'num_workers': self.parameters['num_worker'],
+-                       'pin_memory': self.parameters['pin_memory']} if use_cuda else {}
+ 
+         # 'Init' means that this variable must be initialized.
+         # 'Set' means that this variable have chance of being set, not must.
+-        self.train_loader, self.validation_loader = self.__init_dataloader(kwargs=self.kwargs)
++        self.train_loader, self.validation_loader = self.__init_dataloader()
+         self.model = self.__init_model()
+         self.optimizer = self.__init_optimizer()
+         self.scheduler = self.set_scheduler()
+ 
+-    def __init_dataloader(self, kwargs):
++        wandb.init(project="undefined-project")
++        wandb.watch(self.model)
++
++    def __init_dataloader(self):
++
+         # pin_memory = use CPU on dataloader during GPU is training
+-        train_loader = TrainLoader(dataset_path=self.parameters['train_data_path'],
+-                                   label_path=self.parameters['train_csv_path'],
+-                                   input_size=self.parameters['input_size'],
+-                                   batch_size=self.parameters['batch_size'],
+-                                   **kwargs)
+-
+-        validation_loader = ValidationLoader(dataset_path=self.parameters['test_data_path'],
+-                                             label_path=self.parameters['test_csv_path'],
+-                                             input_size=self.parameters['input_size'],
+-                                             batch_size=self.parameters['batch_size'],
+-                                             **kwargs)
++        train_loader = TrainLoader(dataset_path=self.args.train_data_path,
++                                   label_path=self.args.train_csv_path,
++                                   input_size=self.args.input_size,
++                                   batch_size=self.args.batch_size,
++                                   num_workers=self.args.worker,
++                                   pin_memory=self.args.pin_memory,
++                                   is_grey_scale=self.args.grey_scale)
++
++        validation_loader = ValidationLoader(dataset_path=self.args.test_data_path,
++                                             label_path=self.args.test_csv_path,
++                                             input_size=self.args.input_size,
++                                             batch_size=self.args.batch_size,
++                                             num_workers=self.args.worker,
++                                             pin_memory=self.args.pin_memory,
++                                             is_grey_scale=self.args.grey_scale)
+ 
+         return train_loader.TrainDataLoader, validation_loader.ValidationDataLoader
+ 
+     def __init_model(self):
++
+         # Add some Nets...
+-        model = BaseNet(self.parameters['output_size']).to(self.device)
++        model = BaseNet(self.args.output_size).to(self.device)
+ 
+         return model
+ 
+     def __init_optimizer(self):
+         # Add some Optimizers...
+-        optimizer = optim.SGD(self.model.parameters(), lr=self.parameters['learning_rate'])
++        optimizer = optim.SGD(self.model.parameters(), lr=self.args.lr)
+ 
+         return optimizer
+ 
++    def __train(self, model, device, train_loader, optimizer, epoch, scheduler=None):
++        model.train()
++
++        for batch_idx, (data, target) in enumerate(train_loader):
++            data, target = data.to(device), target.to(device)
++            optimizer.zero_grad()
++            output = model(data)
++
++            # using both 'log_softmax' and 'nll_loss' results in the same effect of one hot labeled set
++            target = target.long()
++            loss = F.nll_loss(output, target)
++            loss.backward()
++            optimizer.step()
++
++            # assign changed lr
++            if scheduler is not None:
++                scheduler.step()
++            if batch_idx % self.args.log_interval == 0:
++                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
++                    epoch, batch_idx * len(data), len(train_loader.dataset),
++                           100. * batch_idx / len(train_loader), loss.item()))
++
++                wandb.log({"Test_Loss": loss})
++
++                with open(self.args.saved_model_directory + '/Log.txt', 'a') as f:
++                    f.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\n'.format(
++                        epoch, batch_idx * len(data), len(train_loader.dataset),
++                               100. * batch_idx / len(train_loader), loss.item()))
++
++    def __validate(self, model, device, test_loader):
++        model.eval()
++        test_loss = 0
++        correct = 0
++        with torch.no_grad():
++            for data, target in test_loader:
++                data, target = data.to(device), target.to(device)
++                output = model(data)
++
++                # compute loss
++                target = target.long()
++                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
++                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
++                correct += pred.eq(target.view_as(pred)).sum().item()
++
++        test_loss /= len(test_loader.dataset)
++
++        # Acc can not be applied on regression model.
++        print('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
++            test_loss, correct, len(test_loader.dataset),
++            100. * correct / len(test_loader.dataset)))
++
++        with open(self.args.saved_model_directory + '/Log.txt', 'a') as f:
++            f.write('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
++                test_loss, correct, len(test_loader.dataset),
++                100. * correct / len(test_loader.dataset)))
++
+     def set_scheduler(self):
++
+         # Add some Schedulers...
+         scheduler = lr_scheduler.WarmupCosineSchedule(optimizer=self.optimizer, warmup_steps=1, t_total=60000,
+                                                       cycles=0.5, last_epoch=-1)
+@@ -110,31 +129,46 @@ class Trainer:
+         return scheduler
+ 
+     def start_train(self, model_name):
++
+         #  increase the epochs if user has low amount of data
+         prev_model_name = ''
+ 
+-        if not os.path.exists(self.parameters['saved_model_directory']):
+-            os.mkdir(self.parameters['saved_model_directory'])
++        if not os.path.exists(self.args.saved_model_directory):
++            os.mkdir(self.args.saved_model_directory)
+ 
+-        with open(self.parameters['saved_model_directory'] + '/Log.txt', 'w') as f:
++        with open(self.args.saved_model_directory + '/Log.txt', 'w') as f:
+             f.write('')
+     
+-            for epoch in range(1, self.parameters['epoch'] + 1):
+-                if epoch == 1:
+-                    _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+-                    _validate(self.parameters, self.model, self.device, self.validation_loader)
++            for epoch in range(1, self.args.epoch + 1):
++
++                # Load previous model for each epochs
++                if epoch <= self.args.save_interval:
++                    self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
++                    self.__validate(self.model, self.device, self.validation_loader)
+                 else:
+                     prev_file_name = torch.load(prev_model_name)
+                     self.model.load_state_dict(prev_file_name)
+-                    _train(self.parameters, self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+-                    _validate(self.parameters, self.model, self.device, self.validation_loader)
++                    self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
++                    self.__validate(self.model, self.device, self.validation_loader)
+ 
+                 print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
+                 f.write("{} epoch elapsed time : {}\n".format(epoch, time.time() - self.startime))
+-                prev_model_name = self.save_model(self.parameters['saved_model_directory'] + '/' + model_name, epoch)
+ 
+-    def save_model(self, model_name, epoch):
+-        file_name = model_name + "_" + str(epoch) + ".pt"
++                if epoch % self.args.save_interval == 0:
++                    prev_model_name = self.save_model(model_name, self.args.saved_model_directory, epoch)
++
++    def save_model(self, model_name, add_path, epoch):
++
++        # normal location
++        file_path = add_path + '/'
++
++        # wandb location
++        # file_path = os.path.join(wandb.run.dir, add_path + '/')
++
++        file_format = file_path + model_name + "_" + str(epoch) + ".pt"
++        if not os.path.exists(file_path):
++            os.mkdir(file_path)
++        file_name = file_format
+         torch.save(self.model.state_dict(), file_name)
+         print("{} Model Saved!!\n".format(file_name))
+ 
+diff --git a/__pycache__/Inference.cpython-37.pyc b/__pycache__/Inference.cpython-37.pyc
+index b55e931..611048c 100644
+Binary files a/__pycache__/Inference.cpython-37.pyc and b/__pycache__/Inference.cpython-37.pyc differ
+diff --git a/__pycache__/Train.cpython-37.pyc b/__pycache__/Train.cpython-37.pyc
+index f8fabf4..b1507ef 100644
+Binary files a/__pycache__/Train.cpython-37.pyc and b/__pycache__/Train.cpython-37.pyc differ
+diff --git a/main.py b/main.py
+index 457d2d0..b3096af 100644
+--- a/main.py
++++ b/main.py
+@@ -1,40 +1,56 @@
+-from Train import Trainer
++from Train import Classifier
+ from Inference import Inferencer
+ from torch.cuda import is_available
++import argparse
+ 
+ 
+ def main():
+-    train_mode = True
+-    inference_mode = False
+-
+-    if train_mode:
+-        train_params = {'input_size': 28,
+-                        'output_size': 10,
+-                        'batch_size': 512,
+-                        'num_worker': 0,
+-                        'validation_batch_size': 1024,
+-                        'epoch': 5,
+-                        'learning_rate': 0.1,
+-                        'momentum': 0.5,
+-                        'use_cuda': True,
+-                        'log_interval': 10,
+-                        'pin_memory': True,
+-                        'saved_model_directory': 'model_checkpoints',
+-                        'train_data_path': 'A:/Users/SSY/Desktop/dataset/training',
+-                        'train_csv_path': 'A:/Users/SSY/Desktop/dataset/mnist_train.csv',
+-                        'test_data_path': 'A:/Users/SSY/Desktop/dataset/testing',
+-                        'test_csv_path': 'A:/Users/SSY/Desktop/dataset/mnist_test.csv'}
+-
+-        print('is cuda available? :', train_params['use_cuda'] and is_available())
+-
+-        trainer = Trainer(train_params)
+-        trainer.start_train('my_awesome_model_name')
+-
+-    if inference_mode:
+-        inference_params = {'model_path': 'model_checkpoints/sunyonggod_1.pt',
+-                            'data_path': 'A:/Users/SSY/Desktop/dataset/2.jpg'}
+-
+-        inferencer = Inferencer(inference_params)
++    parser = argparse.ArgumentParser()
++
++    # Environment argument
++    parser.add_argument('--train_classifier', action='store_true', help='train classifier mode')
++    parser.add_argument('--train_ae', action='store_true', help='train auto-encoder mode')
++    parser.add_argument('--inference', action='store_true', help='inference mode')
++    parser.add_argument('--cuda', action='store_true', help='Using GPU processor')
++    parser.add_argument('--log_interval', type=int, default=10, help='Log interval per batch')
++    parser.add_argument('--pin_memory', action='store_true', help='Load dataset while learning')
++    parser.add_argument('--save_interval', type=int, default=5, help='Saving model interval to epoch')
++
++    # Train parameter
++    parser.add_argument('--batch_size', type=int, default=1)
++    parser.add_argument('--epoch', type=int, default=1)
++    parser.add_argument('--worker', type=int, default=1)
++    parser.add_argument('--lr', type=float, default=1e-5, help='Learning rate')
++    parser.add_argument('--momentum', type=float, default=0.5, help='Learning rate momentum')
++    parser.add_argument('--input_size', type=int, default=228)
++    parser.add_argument('--output_size', type=int, default=1)
++    parser.add_argument('--grey_scale', action='store_true', help='on grey scale image')
++
++    # Data parameter
++    parser.add_argument('--saved_model_directory', type=str, default='model_checkpoints')
++    parser.add_argument('--saved_model_name', type=str, default='model')
++    parser.add_argument('--train_data_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/train')
++    parser.add_argument('--train_csv_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/mnist_train.csv')
++    parser.add_argument('--test_data_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/test')
++    parser.add_argument('--test_csv_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/mnist_test.csv')
++
++    # Inference parameter
++    parser.add_argument('--inference_model_path', type=str, default='model_checkpoints/model_2.pt')
++    parser.add_argument('--data_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/test/00000.jpg')
++
++    args = parser.parse_args()
++
++    if args.train_classifier:
++        print('Use CUDA :', args.cuda and is_available())
++
++        classifier = Classifier(args)
++        classifier.start_train(model_name=args.saved_model_name)
++
++    elif args.train_ae:
++        pass
++    
++    else:
++        inferencer = Inferencer(args)
+         inferencer.start_inference()
+ 
+ 
+diff --git a/model_checkpoints/Log.txt b/model_checkpoints/Log.txt
+index 9fbe848..d3ee67d 100644
+--- a/model_checkpoints/Log.txt
++++ b/model_checkpoints/Log.txt
+@@ -1,27 +1,24 @@
+-1 epoch elapsed time : 43.89999985694885
+-2 epoch elapsed time : 80.48699927330017
+- 1.045449
+-Train Epoch: 1 [10240/60000 (17%)]	Loss: 1.132763
+-Train Epoch: 1 [15360/60000 (25%)]	Loss: 0.760639
+-Train Epoch: 1 [20480/60000 (34%)]	Loss: 0.251320
+-Train Epoch: 1 [25600/60000 (42%)]	Loss: 0.188471
+-Train Epoch: 1 [30720/60000 (51%)]	Loss: 0.182371
+-Train Epoch: 1 [35840/60000 (59%)]	Loss: 0.214957
+-Train Epoch: 1 [40960/60000 (68%)]	Loss: 0.233567
+-Train Epoch: 1 [46080/60000 (76%)]	Loss: 0.124313
+-Train Epoch: 1 [51200/60000 (85%)]	Loss: 0.177538
+-Train Epoch: 1 [56320/60000 (93%)]	Loss: 0.166044
+-Validation set: Average loss: 0.1091, Accuracy: 9665/10000 (97%)
+-Train Epoch: 2 [0/60000 (0%)]	Loss: 0.157592
+-Train Epoch: 2 [5120/60000 (8%)]	Loss: 0.135166
+-Train Epoch: 2 [10240/60000 (17%)]	Loss: 0.119984
+-Train Epoch: 2 [15360/60000 (25%)]	Loss: 0.087176
+-Train Epoch: 2 [20480/60000 (34%)]	Loss: 0.091800
+-Train Epoch: 2 [25600/60000 (42%)]	Loss: 0.091181
+-Train Epoch: 2 [30720/60000 (51%)]	Loss: 0.074129
+-Train Epoch: 2 [35840/60000 (59%)]	Loss: 0.102843
+-Train Epoch: 2 [40960/60000 (68%)]	Loss: 0.069944
+-Train Epoch: 2 [46080/60000 (76%)]	Loss: 0.065648
+-Train Epoch: 2 [51200/60000 (85%)]	Loss: 0.099248
+-Train Epoch: 2 [56320/60000 (93%)]	Loss: 0.074716
+-Validation set: Average loss: 0.0844, Accuracy: 9739/10000 (97%)
++1 epoch elapsed time : 42.98566198348999
++2 epoch elapsed time : 79.2466607093811
++3 epoch elapsed time : 116.97966265678406
++34%)]	Loss: 0.032784
++Train Epoch: 1 [30720/60000 (51%)]	Loss: 0.014174
++Train Epoch: 1 [40960/60000 (68%)]	Loss: 0.009229
++Train Epoch: 1 [51200/60000 (85%)]	Loss: 0.006594
++Validation set: Average loss: 0.0054, Accuracy: 10000/10000 (100%)
++Train Epoch: 2 [0/60000 (0%)]	Loss: 0.005203
++Train Epoch: 2 [10240/60000 (17%)]	Loss: 0.004337
++Train Epoch: 2 [20480/60000 (34%)]	Loss: 0.003347
++Train Epoch: 2 [30720/60000 (51%)]	Loss: 0.002992
++Train Epoch: 2 [40960/60000 (68%)]	Loss: 0.002593
++Train Epoch: 2 [51200/60000 (85%)]	Loss: 0.002165
++Validation set: Average loss: 0.0021, Accuracy: 10000/10000 (100%)
++Train Epoch: 3 [0/60000 (0%)]	Loss: 0.002029
++Train Epoch: 3 [10240/60000 (17%)]	Loss: 0.001860
++Train Epoch: 3 [20480/60000 (34%)]	Loss: 0.001726
++Train Epoch: 3 [30720/60000 (51%)]	Loss: 0.001544
++Train Epoch: 3 [40960/60000 (68%)]	Loss: 0.001260
++Train Epoch: 3 [51200/60000 (85%)]	Loss: 0.001341
++Validation set: Average loss: 0.0013, Accuracy: 10000/10000 (100%)
++Train Epoch: 4 [0/60000 (0%)]	Loss: 0.001774
++Train Epoch: 4 [10240/60000 (17%)]	Loss: 0.001736
+diff --git a/models/__pycache__/dataloader.cpython-37.pyc b/models/__pycache__/dataloader.cpython-37.pyc
+index 524696a..68a4280 100644
+Binary files a/models/__pycache__/dataloader.cpython-37.pyc and b/models/__pycache__/dataloader.cpython-37.pyc differ
+diff --git a/models/__pycache__/model.cpython-37.pyc b/models/__pycache__/model.cpython-37.pyc
+index 0e1aa7d..8a868e7 100644
+Binary files a/models/__pycache__/model.cpython-37.pyc and b/models/__pycache__/model.cpython-37.pyc differ
+diff --git a/models/dataloader.py b/models/dataloader.py
+index 3dc308f..0c49dea 100644
+--- a/models/dataloader.py
++++ b/models/dataloader.py
+@@ -3,15 +3,21 @@ import os
+ from torchvision import transforms
+ import pandas as pd
+ from PIL.Image import open, new
++from .utils import value_scaler
+ 
+ 
+ class ImageCSVLoader(Dataset):
+-    def __init__(self, transform, train_data_path, train_label_path):
++
++    def __init__(self, transform, train_data_path, train_label_path, is_grey_scale):
+         self.transform = transform
++        self.is_grey_scale = is_grey_scale
+ 
+         x_img_name = os.listdir(train_data_path)
+         y_label = pd.read_csv(train_label_path, header=0)
+-        y_label = y_label['label']
++        y_label = y_label['label']  # label column
++
++        if y_label is None:
++            raise Exception('Please specify the label name of column !!!')
+ 
+         x_img_path = list()
+         for item in x_img_name:
+@@ -19,19 +25,18 @@ class ImageCSVLoader(Dataset):
+ 
+         self.len = len(x_img_name)
+         self.x_img_path = x_img_path
+-        self.y_label = y_label
++        self.y_label = y_label / value_scaler    # label value has to be scaled to [0,1]
+ 
+     def __getitem__(self, index):
+         new_img = open(self.x_img_path[index])
+ 
+-        # # If needs RGB Image
+-        # rgb_img = new("RGB", new_img.size)
+-        # rgb_img.paste(new_img)
++        if not self.is_grey_scale:
++            rgb_img = new("RGB", new_img.size)
++            rgb_img.paste(new_img)
+ 
+-        if self.transform:
+-            out_img = self.transform(new_img)
++        out_img = self.transform(new_img)
+ 
+-        return out_img, self.y_label[index]
++        return out_img, self.y_label[index]     # data, target
+ 
+     def __len__(self):
+         return self.len
+@@ -39,21 +44,23 @@ class ImageCSVLoader(Dataset):
+ 
+ class ValidationLoader:
+ 
+-    def __init__(self, dataset_path, label_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
++    def __init__(self, dataset_path, label_path, input_size, is_grey_scale, batch_size=64, num_workers=0, pin_memory=True):
+         self.input_size = input_size
+         self.batch_size = batch_size
+         self.num_workers = num_workers
+         self.pin_memory = pin_memory
+         self.validation_data_path = dataset_path
+         self.validation_label_path = label_path
++        self.is_grey_scale = is_grey_scale
+ 
+         # Data augmentation and normalization
+         self.validation_trans = transforms.Compose([transforms.ToTensor(),
+-                                                    transforms.Normalize((0.1307,), (0.3081,))])
++                                                    ])
+ 
+         self.ValidationDataLoader = DataLoader(ImageCSVLoader(self.validation_trans,
+                                                               self.validation_data_path,
+-                                                              self.validation_label_path),
++                                                              self.validation_label_path,
++                                                              self.is_grey_scale),
+                                                batch_size=batch_size,
+                                                num_workers=num_workers,
+                                                shuffle=True,
+@@ -62,28 +69,27 @@ class ValidationLoader:
+ 
+ class TrainLoader:
+ 
+-    def __init__(self, dataset_path, label_path, input_size, batch_size=64, num_workers=0, pin_memory=True):
++    def __init__(self, dataset_path, label_path, input_size, is_grey_scale, batch_size=64, num_workers=0, pin_memory=True):
+         self.input_size = input_size
+         self.batch_size = batch_size
+         self.num_workers = num_workers
+         self.pin_memory = pin_memory
+         self.train_data_path = dataset_path
+         self.train_label_path = label_path
++        self.is_grey_scale = is_grey_scale
+ 
+         # # Data augmentation and normalization
+-        # self.train_trans = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5),
+-        #                                        transforms.RandomRotation(30),
+-        #                                        transforms.RandomCrop(input_size),
+-        #                                        transforms.ToTensor(),
+-        #                                        transforms.Normalize((0.1307,), (0.3081,)),
+-        #                                        ])
+-
+-        self.train_trans = transforms.Compose([transforms.ToTensor(),
+-                                               transforms.Normalize((0.1307,), (0.3081,))])
++        self.train_trans = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5),
++                                               transforms.RandomRotation(30),
++                                               transforms.ColorJitter(),
++                                               transforms.Resize(self.input_size),
++                                               transforms.ToTensor(),
++                                               ])
+ 
+         self.TrainDataLoader = DataLoader(ImageCSVLoader(self.train_trans,
+                                                          self.train_data_path,
+-                                                         self.train_label_path),
++                                                         self.train_label_path,
++                                                         self.is_grey_scale),
+                                           batch_size=self.batch_size,
+                                           num_workers=self.num_workers,
+                                           shuffle=True,
+diff --git a/models/model.py b/models/model.py
+index acd2726..0fb27f8 100644
+--- a/models/model.py
++++ b/models/model.py
+@@ -3,40 +3,128 @@ import torch.nn.functional as F
+ import torchvision.models as models
+ 
+ 
+-# Add some model declarations
+-class BaseNet(nn.Module):
+-    def __init__(self, output_size):
+-        super(BaseNet, self).__init__()
+-        self.conv1 = nn.Conv2d(1, 20, 5, 1)
+-        self.conv2 = nn.Conv2d(20, 50, 5, 1)
+-        self.fc1 = nn.Linear(4 * 4 * 50, 500)
+-        self.fc2 = nn.Linear(500, output_size)
+-
+-        nn.init.xavier_uniform_(self.conv1.weight)
+-        nn.init.xavier_uniform_(self.conv2.weight)
+-        nn.init.xavier_uniform_(self.fc1.weight)
+-        nn.init.xavier_uniform_(self.fc2.weight)
++def weights_init_normal(m):
++    classname = m.__class__.__name__
++
++    # different initialization for each network structure
++    if classname.find('Conv') != -1:
++        nn.init.xavier_uniform_(m.weight)
++
++    elif classname.find('BatchNorm2d') != -1:
++        nn.init.normal_(m.weight.data, 1.0, 0.02)
++        nn.init.constant_(m.bias.data, 0.0)
++
++    elif type(m) == nn.Linear:
++        nn.init.xavier_uniform_(m.weight)
++        m.bias.data.fill_(0.01)
+ 
++    else:
++        print('Undefined structure for initialization :', classname)
++
++
++class Flatten(nn.Module):
+     def forward(self, x):
+-        x = F.relu(self.conv1(x))
+-        x = F.max_pool2d(x, 2, 2)
+-        x = F.relu(self.conv2(x))
+-        x = F.max_pool2d(x, 2, 2)
+-        x = x.view(-1, 4 * 4 * 50)
+-        x = F.relu(self.fc1(x))
+-        x = self.fc2(x)
++        """
++        Note that input.size(0) is usually the batch size.
++        So what it does is that given any input with input.size(0) # of batches,
++        will flatten to be 1 * nb_elements.
++        """
++        batch_size = x.size(0)
++        out = x.view(batch_size, -1)
++        return out  # (batch_size, *size)
++
++
++class ResidualBlock(nn.Module):
++    def __init__(self, in_features):
++        super(ResidualBlock, self).__init__()
+ 
+-        return F.log_softmax(x, dim=1)
++        conv_block = [  nn.ReflectionPad2d(1),
++                        nn.Conv2d(in_features, in_features, 3),
++                        nn.InstanceNorm2d(in_features),
++                        nn.ReLU(inplace=True),
++                        nn.ReflectionPad2d(1),
++                        nn.Conv2d(in_features, in_features, 3),
++                        nn.InstanceNorm2d(in_features)  ]
+ 
++        self.conv_block = nn.Sequential(*conv_block)
+ 
+-class Resnet18(nn.Module):
++    def forward(self, x):
++        return x + self.conv_block(x)
++
++
++class BaseNet(nn.Module):
+ 
+     def __init__(self, out_size):
+         super().__init__()
+-        model = models.resnet18(pretrained=False)
+-        model = list(model.children())[:-1]
+-        model.append(nn.Conv2d(512, out_size, 1))
+-        self.net = nn.Sequential(*model)
+ 
+-    def forward(self, image):
+-        return self.net(image).squeeze(-1).squeeze(-1)
++        model = [
++            nn.Conv2d(1, 20, 5, 1),
++            nn.ReLU(),
++            nn.MaxPool2d(2, 2),
++
++            nn.Conv2d(20, 50, 5, 1),
++            nn.ReLU(),
++            nn.MaxPool2d(2, 2),
++
++            Flatten(),
++
++            nn.Linear(4 * 4 * 50, 500),
++            nn.ReLU(),
++
++            nn.Linear(500, out_size),
++            nn.LogSoftmax(dim=1)
++        ]
++
++        self.model = nn.Sequential(*model)
++
++        for network in self.model:
++            weights_init_normal(network)
++
++    def forward(self, x):
++        return self.model(x)
++
++
++class AutoEncoder(nn.Module):
++    def __init__(self, input_nc, output_nc, n_residual_blocks=9):
++        super(AutoEncoder, self).__init__()
++
++        # Initial convolution block
++        model = [   nn.ReflectionPad2d(3),
++                    nn.Conv2d(input_nc, 64, 7),
++                    nn.InstanceNorm2d(64),
++                    nn.ReLU(inplace=True) ]
++
++        # Down-sampling
++        in_features = 64
++        out_features = in_features*2
++        for _ in range(2):
++            model += [  nn.Conv2d(in_features, out_features, 3, stride=2, padding=1),
++                        nn.InstanceNorm2d(out_features),
++                        nn.ReLU(inplace=True) ]
++            in_features = out_features
++            out_features = in_features*2
++
++        # ----------------------------------------------- LATENT SPACE ----------------------------------------------- #
++
++        # Residual blocks
++        for _ in range(n_residual_blocks):
++            model += [ResidualBlock(in_features)]
++
++        # Up-sampling
++        out_features = in_features//2
++        for _ in range(2):
++            model += [  nn.ConvTranspose2d(in_features, out_features, 3, stride=2, padding=1, output_padding=1),
++                        nn.InstanceNorm2d(out_features),
++                        nn.ReLU(inplace=True) ]
++            in_features = out_features
++            out_features = in_features//2
++
++        # Output layer
++        model += [  nn.ReflectionPad2d(3),
++                    nn.Conv2d(64, output_nc, 7),
++                    nn.Tanh() ]
++
++        self.model = nn.Sequential(*model)
++
++    def forward(self, x):
++        return self.model(x)
+diff --git a/models/utils.py b/models/utils.py
+index 33f877d..bb8c603 100644
+--- a/models/utils.py
++++ b/models/utils.py
+@@ -1,6 +1,9 @@
+ import numpy as np
+ 
+ 
++value_scaler = 1
++
++
+ def cutout(*, mask_size=24, cutout_inside=False, mask_color=(255)):
+     mask_size_half = mask_size // 2
+     offset = 1 if mask_size % 2 == 0 else 0
