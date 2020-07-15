@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--input_size', type=int, default=228)
     parser.add_argument('--output_size', type=int, default=1)
     parser.add_argument('--grey_scale', action='store_true', help='on grey scale image')
+    parser.add_argument('--skip_validation', action='store_true', help='skip validation')
 
     # Data parameter
     parser.add_argument('--saved_model_directory', type=str, default='model_checkpoints')

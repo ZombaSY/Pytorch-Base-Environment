@@ -19,18 +19,25 @@ class Classifier:
         use_cuda = self.args.cuda and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
 
-
         # 'Init' means that this variable must be initialized.
         # 'Set' means that this variable have chance of being set, not must.
-        self.train_loader, self.validation_loader = self.__init_dataloader()
+        if not self.args.skip_validation:
+            self.train_loader, self.validation_loader = self.__init_data_loader()
+        else:
+            self.train_loader = self.__init_data_loader()
         self.model = self.__init_model()
         self.optimizer = self.__init_optimizer()
         self.scheduler = self.set_scheduler()
 
-        wandb.init(project="undefined-project")
+        self.loss_log = []
+        self.acc_log = []
+
+        wandb.init(project='undefined-project', config=self.args)
         wandb.watch(self.model)
 
-    def __init_dataloader(self):
+    def __init_data_loader(self):
+        train_loader = None
+        validation_loader = None
 
         # pin_memory = use CPU on dataloader during GPU is training
         train_loader = TrainLoader(dataset_path=self.args.train_data_path,
@@ -41,15 +48,18 @@ class Classifier:
                                    pin_memory=self.args.pin_memory,
                                    is_grey_scale=self.args.grey_scale)
 
-        validation_loader = ValidationLoader(dataset_path=self.args.test_data_path,
-                                             label_path=self.args.test_csv_path,
-                                             input_size=self.args.input_size,
-                                             batch_size=self.args.batch_size,
-                                             num_workers=self.args.worker,
-                                             pin_memory=self.args.pin_memory,
-                                             is_grey_scale=self.args.grey_scale)
+        if not self.args.skip_validation:
+            validation_loader = ValidationLoader(dataset_path=self.args.test_data_path,
+                                                 label_path=self.args.test_csv_path,
+                                                 input_size=self.args.input_size,
+                                                 batch_size=self.args.batch_size,
+                                                 num_workers=self.args.worker,
+                                                 pin_memory=self.args.pin_memory,
+                                                 is_grey_scale=self.args.grey_scale)
 
-        return train_loader.TrainDataLoader, validation_loader.ValidationDataLoader
+            return train_loader.TrainDataLoader, validation_loader.ValidationDataLoader
+        else:
+            return train_loader.TrainDataLoader
 
     def __init_model(self):
 
@@ -88,11 +98,6 @@ class Classifier:
 
                 wandb.log({"Test_Loss": loss})
 
-                with open(self.args.saved_model_directory + '/Log.txt', 'a') as f:
-                    f.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\n'.format(
-                        epoch, batch_idx * len(data), len(train_loader.dataset),
-                               100. * batch_idx / len(train_loader), loss.item()))
-
     def __validate(self, model, device, test_loader):
         model.eval()
         test_loss = 0
@@ -115,10 +120,7 @@ class Classifier:
             test_loss, correct, len(test_loader.dataset),
             100. * correct / len(test_loader.dataset)))
 
-        with open(self.args.saved_model_directory + '/Log.txt', 'a') as f:
-            f.write('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-                test_loss, correct, len(test_loader.dataset),
-                100. * correct / len(test_loader.dataset)))
+        wandb.log({"Accuracy": 100. * correct / len(test_loader.dataset)})
 
     def set_scheduler(self):
 
@@ -130,39 +132,26 @@ class Classifier:
 
     def start_train(self, model_name):
 
-        #  increase the epochs if user has low amount of data
-        prev_model_name = ''
-
         if not os.path.exists(self.args.saved_model_directory):
             os.mkdir(self.args.saved_model_directory)
 
-        with open(self.args.saved_model_directory + '/Log.txt', 'w') as f:
-            f.write('')
-    
-            for epoch in range(1, self.args.epoch + 1):
+        for epoch in range(1, self.args.epoch + 1):
+            print()
+            self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+            if not self.args.skip_validation:
+                self.__validate(self.model, self.device, self.validation_loader)
 
-                # Load previous model for each epochs
-                if epoch <= self.args.save_interval:
-                    self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
-                    self.__validate(self.model, self.device, self.validation_loader)
-                else:
-                    prev_file_name = torch.load(prev_model_name)
-                    self.model.load_state_dict(prev_file_name)
-                    self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
-                    self.__validate(self.model, self.device, self.validation_loader)
+            print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
 
-                print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
-                f.write("{} epoch elapsed time : {}\n".format(epoch, time.time() - self.startime))
-
-                if epoch % self.args.save_interval == 0:
-                    prev_model_name = self.save_model(model_name, self.args.saved_model_directory, epoch)
+            if epoch % self.args.save_interval == 0:
+                self.save_model(model_name, self.args.saved_model_directory, epoch)
 
     def save_model(self, model_name, add_path, epoch):
-
+        print('saving model...')
         # normal location
         file_path = add_path + '/'
 
-        # wandb location
+        # wandb local location
         # file_path = os.path.join(wandb.run.dir, add_path + '/')
 
         file_format = file_path + model_name + "_" + str(epoch) + ".pt"
@@ -170,6 +159,4 @@ class Classifier:
             os.mkdir(file_path)
         file_name = file_format
         torch.save(self.model.state_dict(), file_name)
-        print("{} Model Saved!!\n".format(file_name))
-
-        return file_name
+        print("{} Model Saved!!".format(file_name))
