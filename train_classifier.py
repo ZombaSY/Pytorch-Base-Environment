@@ -32,8 +32,9 @@ class Classifier:
         self.loss_log = []
         self.acc_log = []
 
-        wandb.init(project='undefined-project', config=self.args)
-        wandb.watch(self.model)
+        if self.args.use_wandb:
+            wandb.init(project='undefined-project', config=self.args)
+            wandb.watch(self.model)
 
     def __init_data_loader(self):
         train_loader = None
@@ -96,7 +97,8 @@ class Classifier:
                     epoch, batch_idx * len(data), len(train_loader.dataset),
                            100. * batch_idx / len(train_loader), loss.item()))
 
-                wandb.log({"Test_Loss": loss})
+                if self.args.use_wandb:
+                    wandb.log({"Test_Loss": loss})
 
     def __validate(self, model, device, test_loader):
         model.eval()
@@ -120,7 +122,8 @@ class Classifier:
             test_loss, correct, len(test_loader.dataset),
             100. * correct / len(test_loader.dataset)))
 
-        wandb.log({"Accuracy": 100. * correct / len(test_loader.dataset)})
+        if self.args.use_wandb:
+            wandb.log({"Accuracy": 100. * correct / len(test_loader.dataset)})
 
     def set_scheduler(self):
 

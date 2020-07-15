@@ -1,1 +1,1 @@
-python main.py --train_classifier --cuda --save_interval 1 --log_interval 10 --pin_memory --batch_size 1024 --epoch 10 --worker 8 --lr 0.1 --momentum 0.5 --input_size 28 --output_size 10
+python main.py --mode train_classifier --cuda --save_interval 1 --log_interval 10 --pin_memory --batch_size 1024 --epoch 10 --worker 8 --lr 0.1 --momentum 0.5 --input_size 28 --output_size 10

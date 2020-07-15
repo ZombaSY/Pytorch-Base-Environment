@@ -1,4 +1,4 @@
-from Train import Classifier
+from train_classifier import Classifier
 from Inference import Inferencer
 from torch.cuda import is_available
 import argparse
@@ -8,13 +8,12 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Environment argument
-    parser.add_argument('--train_classifier', action='store_true', help='train classifier mode')
-    parser.add_argument('--train_ae', action='store_true', help='train auto-encoder mode')
-    parser.add_argument('--inference', action='store_true', help='inference mode')
+    parser.add_argument('--mode', choices=['train_classifier', 'train_ae', 'inference'], help='run mode')
     parser.add_argument('--cuda', action='store_true', help='Using GPU processor')
     parser.add_argument('--log_interval', type=int, default=10, help='Log interval per batch')
     parser.add_argument('--pin_memory', action='store_true', help='Load dataset while learning')
     parser.add_argument('--save_interval', type=int, default=5, help='Saving model interval to epoch')
+    parser.add_argument('--use_wandb', action='store_true', help='utilize wandb')
 
     # Train parameter
     parser.add_argument('--batch_size', type=int, default=1)
@@ -41,18 +40,21 @@ def main():
 
     args = parser.parse_args()
 
-    if args.train_classifier:
+    if args.mode == 'train_classifier':
         print('Use CUDA :', args.cuda and is_available())
 
         classifier = Classifier(args)
         classifier.start_train(model_name=args.saved_model_name)
 
-    elif args.train_ae:
+    elif args.mode == 'train_ae':
         pass
     
-    else:
+    elif args.mode == 'inference':
         inferencer = Inferencer(args)
         inferencer.start_inference()
+
+    else:
+        raise Exception('Please choose \'--mode\' in \"train_classifier, train_ae, inference \"')
 
 
 if __name__ == "__main__":
