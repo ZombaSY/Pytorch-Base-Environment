@@ -29,9 +29,6 @@ class Classifier:
         self.optimizer = self.__init_optimizer()
         self.scheduler = self.set_scheduler()
 
-        self.loss_log = []
-        self.acc_log = []
-
         if self.args.use_wandb:
             wandb.init(project='undefined-project', config=self.args)
             wandb.watch(self.model)
@@ -40,7 +37,7 @@ class Classifier:
         train_loader = None
         validation_loader = None
 
-        # pin_memory = use CPU on dataloader during GPU is training
+        # pin_memory = use CPU on data loader during GPU is training
         train_loader = TrainLoader(dataset_path=self.args.train_data_path,
                                    label_path=self.args.train_csv_path,
                                    input_size=self.args.input_size,
@@ -83,7 +80,7 @@ class Classifier:
             optimizer.zero_grad()
             output = model(data)
 
-            # using both 'log_softmax' and 'nll_loss' results in the same effect of one hot labeled set
+            # using 'nll_loss with log scaled value' results the same effect of one hot labeled set
             target = target.long()
             loss = F.nll_loss(output, target)
             loss.backward()
@@ -92,6 +89,7 @@ class Classifier:
             # assign changed lr
             if scheduler is not None:
                 scheduler.step()
+
             if batch_idx % self.args.log_interval == 0:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     epoch, batch_idx * len(data), len(train_loader.dataset),
@@ -127,9 +125,11 @@ class Classifier:
 
     def set_scheduler(self):
 
-        # Add some Schedulers...
-        scheduler = lr_scheduler.WarmupCosineSchedule(optimizer=self.optimizer, warmup_steps=1, t_total=60000,
-                                                      cycles=0.5, last_epoch=-1)
+        scheduler = lr_scheduler.WarmupCosineSchedule(optimizer=self.optimizer,
+                                                      warmup_steps=1,
+                                                      t_total=self.train_loader.__len__(),
+                                                      cycles=0.5,
+                                                      last_epoch=-1)
 
         return scheduler
 

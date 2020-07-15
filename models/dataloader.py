@@ -67,6 +67,9 @@ class ValidationLoader:
                                                shuffle=True,
                                                pin_memory=pin_memory)
 
+    def __len__(self):
+        return self.ValidationDataLoader.__len__()
+
 
 class TrainLoader:
 
@@ -95,3 +98,6 @@ class TrainLoader:
                                           num_workers=self.num_workers,
                                           shuffle=True,
                                           pin_memory=self.pin_memory)
+
+    def __len__(self):
+        return self.TrainDataLoader.__len__()
