@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="4bf396ce-6973-4a0d-ab6b-f60db92ce3de" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/Pytorch-Base-Environment.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Pytorch-Base-Environment.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Train.py" beforeDir="false" afterPath="$PROJECT_DIR$/Train.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run scripts/train.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run scripts/train.sh" afterDir="false" />
-    </list>
+    <list default="true" id="4bf396ce-6973-4a0d-ab6b-f60db92ce3de" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -53,7 +46,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1578483175048</updated>
-      <workItem from="1594789360593" duration="7717000" />
+      <workItem from="1594789360593" duration="8179000" />
     </task>
     <servers />
   </component>
