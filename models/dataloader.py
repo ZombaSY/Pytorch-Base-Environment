@@ -54,7 +54,8 @@ class ValidationLoader:
         self.is_grey_scale = is_grey_scale
 
         # Data augmentation and normalization
-        self.validation_trans = transforms.Compose([transforms.ToTensor(),
+        self.validation_trans = transforms.Compose([transforms.Resize(self.input_size),
+                                                    transforms.ToTensor(),
                                                     ])
 
         self.ValidationDataLoader = DataLoader(ImageCSVLoader(self.validation_trans,

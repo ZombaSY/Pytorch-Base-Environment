@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="4bf396ce-6973-4a0d-ab6b-f60db92ce3de" name="Default Changelist" comment="" />
+    <list default="true" id="4bf396ce-6973-4a0d-ab6b-f60db92ce3de" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -27,7 +29,7 @@
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/../Utils-Collection" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../Digo-Database" />
     <property name="node.js.detected.package.eslint" value="true" />
     <property name="node.js.detected.package.tslint" value="true" />
     <property name="node.js.path.for.package.eslint" value="project" />
@@ -46,7 +48,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1578483175048</updated>
-      <workItem from="1594789360593" duration="8519000" />
+      <workItem from="1594789360593" duration="9816000" />
     </task>
     <servers />
   </component>
@@ -57,9 +59,9 @@
     <option name="oldMeFiltersMigrated" value="true" />
   </component>
   <component name="WindowStateProjectService">
-    <state x="740" y="275" key="FileChooserDialogImpl" timestamp="1594794838215">
+    <state x="740" y="275" key="FileChooserDialogImpl" timestamp="1594802260715">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="740" y="275" key="FileChooserDialogImpl/0.0.1920.1040/1920.-851.1080.1880@0.0.1920.1040" timestamp="1594794838215" />
+    <state x="740" y="275" key="FileChooserDialogImpl/0.0.1920.1040/1920.-851.1080.1880@0.0.1920.1040" timestamp="1594802260715" />
   </component>
 </project>
