@@ -3,7 +3,6 @@ import os
 from torchvision import transforms
 import pandas as pd
 from PIL.Image import open, new
-from .utils import value_scaler
 
 
 class ImageCSVLoader(Dataset):
@@ -25,7 +24,7 @@ class ImageCSVLoader(Dataset):
 
         self.len = len(x_img_name)
         self.x_img_path = x_img_path
-        self.y_label = y_label / value_scaler    # label value has to be scaled to [0,1]
+        self.y_label = y_label
 
     def __getitem__(self, index):
         new_img = open(self.x_img_path[index])

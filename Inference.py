@@ -4,7 +4,6 @@ from PIL.ImageOps import invert
 from models.model import BaseNet
 from torchvision.transforms import transforms
 import numpy as np
-from models.utils import value_scaler
 
 
 class Inferencer:
