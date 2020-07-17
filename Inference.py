@@ -1,9 +1,8 @@
 from torch import device, load
-import PIL.Image as Image
-from PIL.ImageOps import invert
 from models.model import BaseNet
 from torchvision.transforms import transforms
 import numpy as np
+from models.utils import load_cropped_image
 
 
 class Inferencer:
@@ -22,7 +21,7 @@ class Inferencer:
         self.result = ''
 
         # data transformation on grey scale image
-        self.input = self.__convert_handmade_src(self.src_path, args.input_size, grey_scale=args.grey_scale)
+        self.input = load_cropped_image(self.src_path, args.input_size, grey_scale=args.grey_scale, invert_color=False)
         # self.input.save('sample.jpg')
 
     def start_inference(self):
@@ -36,40 +35,3 @@ class Inferencer:
         self.result = str(np.argmax(predict))
 
         print('Result :', self.result)
-
-    def __convert_handmade_src(self, src_path, output_size, grey_scale):
-
-        def crop_background(numpy_src):
-
-            def _get_vertex(img):
-                index = 0
-                for i, items in enumerate(img):
-                    if items.max() != 0:  # activate where background is '0'
-                        index = i
-                        break
-
-                return index
-
-            numpy_src_y1 = _get_vertex(numpy_src)
-            numpy_src_y2 = len(numpy_src) - _get_vertex(np.flip(numpy_src, 0))
-            numpy_src_x1 = _get_vertex(np.transpose(numpy_src))
-            numpy_src_x2 = len(numpy_src[0]) - _get_vertex(np.flip(np.transpose(numpy_src), 0))
-
-            return numpy_src_x1, numpy_src_y1, numpy_src_x2, numpy_src_y2
-
-        if grey_scale:
-            src_image = Image.open(src_path, 'r').convert('L')
-            # src_image = invert(src_image)     # invert color
-
-            numpy_image = np.asarray(src_image.getdata(), dtype=np.float64).reshape((src_image.size[1], src_image.size[0]))
-            numpy_image = np.asarray(numpy_image, dtype=np.uint8)  # if values still in range 0-255
-
-            pil_image = Image.fromarray(numpy_image, mode='L')
-            x1, y1, x2, y2 = crop_background(numpy_image)
-            pil_image = pil_image.crop((x1, y1, x2, y2))
-            pil_image = pil_image.resize([output_size, output_size])
-
-        else:
-            pil_image = Image.open(src_path, 'r')
-
-        return pil_image
