@@ -19,7 +19,7 @@ def weights_init_normal(m):
         m.bias.data.fill_(0.01)
 
     else:
-        print('Undefined structure for initialization :', classname)
+        pass
 
 
 class Flatten(nn.Module):
@@ -59,20 +59,27 @@ class BaseNet(nn.Module):
         super().__init__()
 
         model = [
-            nn.Conv2d(1, 20, 5, 1),
+            nn.Conv2d(1, 64, 3, 1),
+            nn.InstanceNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
 
-            nn.Conv2d(20, 50, 5, 1),
+            nn.Conv2d(64, 128, 3, 1),
+            nn.InstanceNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(128, 256, 3, 1),
+            nn.InstanceNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(256, 512, 1, 1),
+            nn.ReLU(),
 
             Flatten(),
 
-            nn.Linear(4 * 4 * 50, 500),
-            nn.ReLU(),
-
-            nn.Linear(500, out_size),
+            nn.Linear(1 * 1 * 512, out_size),
             nn.LogSoftmax(dim=1)
         ]
 

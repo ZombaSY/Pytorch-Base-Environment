@@ -21,9 +21,10 @@
   <component name="ChangeListManager">
     <list default="true" id="4bf396ce-6973-4a0d-ab6b-f60db92ce3de" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Inference.py" beforeDir="false" afterPath="$PROJECT_DIR$/Inference.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/trash.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run scripts/inference.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run scripts/inference.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run scripts/train.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run scripts/train.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/train_classifier.py" beforeDir="false" afterPath="$PROJECT_DIR$/train_classifier.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,7 +75,7 @@
       <workItem from="1594808674794" duration="1731000" />
       <workItem from="1594866754678" duration="680000" />
       <workItem from="1594880273544" duration="1827000" />
-      <workItem from="1594963561118" duration="361000" />
+      <workItem from="1594963561118" duration="2335000" />
     </task>
     <servers />
   </component>

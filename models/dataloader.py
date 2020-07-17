@@ -15,9 +15,6 @@ class ImageCSVLoader(Dataset):
         y_label = pd.read_csv(train_label_path, header=0)
         y_label = y_label['label']  # label column
 
-        if y_label is None:
-            raise Exception('Please specify the label name of column !!!')
-
         x_img_path = list()
         for item in x_img_name:
             x_img_path.append(train_data_path + '/' + item)

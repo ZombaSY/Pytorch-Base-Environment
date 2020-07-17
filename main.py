@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--test_csv_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/mnist_test.csv')
 
     # Inference parameter
-    parser.add_argument('--inference_model_path', type=str, default='model_checkpoints/model_2.pt')
+    parser.add_argument('--inference_model_path', type=str, default='model_checkpoints/model_10.pt')
     parser.add_argument('--data_path', type=str, default='A:/Users/SSY/Desktop/dataset/MNIST/test/00000.jpg')
 
     args = parser.parse_args()

@@ -27,6 +27,8 @@ class Classifier:
             self.train_loader = self.__init_data_loader()
         self.model = self.__init_model()
         self.optimizer = self.__init_optimizer()
+        self.loss_function = self.__init_loss_function()
+
         self.scheduler = self.set_scheduler()
 
         if self.args.use_wandb:
@@ -66,13 +68,17 @@ class Classifier:
 
         return model
 
+    def __init_loss_function(self):
+
+        return F.nll_loss
+
     def __init_optimizer(self):
         # Add some Optimizers...
         optimizer = optim.SGD(self.model.parameters(), lr=self.args.lr)
 
         return optimizer
 
-    def __train(self, model, device, train_loader, optimizer, epoch, scheduler=None):
+    def __train(self, model, device, train_loader, optimizer, epoch, loss_function, scheduler=None):
         model.train()
 
         for batch_idx, (data, target) in enumerate(train_loader):
@@ -82,7 +88,7 @@ class Classifier:
 
             # using 'nll_loss with log scaled value' results the same effect of one hot labeled set
             target = target.long()
-            loss = F.nll_loss(output, target)
+            loss = loss_function(output, target)
             loss.backward()
             optimizer.step()
 
@@ -98,30 +104,30 @@ class Classifier:
                 if self.args.use_wandb:
                     wandb.log({"Test_Loss": loss})
 
-    def __validate(self, model, device, test_loader):
+    def __validate(self, model, device, loss_function, val_loader):
         model.eval()
         test_loss = 0
         correct = 0
         with torch.no_grad():
-            for data, target in test_loader:
+            for data, target in val_loader:
                 data, target = data.to(device), target.to(device)
                 output = model(data)
 
                 # compute loss
                 target = target.long()
-                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                test_loss += loss_function(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
 
-        test_loss /= len(test_loader.dataset)
+        test_loss /= len(val_loader.dataset)
 
         # Acc can not be applied on regression model.
         print('Validation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-            test_loss, correct, len(test_loader.dataset),
-            100. * correct / len(test_loader.dataset)))
+            test_loss, correct, len(val_loader.dataset),
+            100. * correct / len(val_loader.dataset)))
 
         if self.args.use_wandb:
-            wandb.log({"Accuracy": 100. * correct / len(test_loader.dataset)})
+            wandb.log({"Accuracy": 100. * correct / len(val_loader.dataset)})
 
     def set_scheduler(self):
 
@@ -139,10 +145,16 @@ class Classifier:
             os.mkdir(self.args.saved_model_directory)
 
         for epoch in range(1, self.args.epoch + 1):
-            print()
-            self.__train(self.model, self.device, self.train_loader, self.optimizer, epoch, self.scheduler)
+
+            self.__train(self.model,
+                         self.device,
+                         self.train_loader,
+                         self.optimizer,
+                         epoch,
+                         self.loss_function,
+                         self.scheduler)
             if not self.args.skip_validation:
-                self.__validate(self.model, self.device, self.validation_loader)
+                self.__validate(self.model, self.device, self.loss_function, self.validation_loader)
 
             print("{} epoch elapsed time : {}".format(epoch, time.time() - self.startime))
 
